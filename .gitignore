@@ -1,0 +1,15 @@
+# dirs
+logs/*
+embeddings_cache/*
+dataset
+__pycache__
+.venv
+
+# files
+*.log
+*.pkl
+.env
+
+# OS
+.DS_Store
+*:Zone.Identifier
