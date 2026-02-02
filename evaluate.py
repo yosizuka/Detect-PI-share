@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any
 # 共通ユーティリティをインポート
 from utils import (
     get_local_llm_output,
-    get_classifier_prediction,
+    get_classifier_prediction_and_llm_outputs,
     load_model,
     MODEL_CACHE_FILE
 )
@@ -99,7 +99,7 @@ JSON format:
         return None
 
 def evaluate(clf: Any, prompts_val: List[str], labels_val: List[int], 
-             num_eval: int = 20) -> Dict[str, float]:
+             num_eval: int = 20, models: Optional[List[str]] = None) -> Dict[str, float]:
     """
     モデルを評価
     
@@ -108,6 +108,7 @@ def evaluate(clf: Any, prompts_val: List[str], labels_val: List[int],
         prompts_val: 評価用プロンプトのリスト
         labels_val: 評価用ラベルのリスト
         num_eval: 評価サンプル数
+        models: LLM出力取得に使用するモデル名リスト（Noneならデフォルト）
     
     Returns:
         評価結果の辞書(precision, recall, f1, num_samples)
@@ -129,8 +130,8 @@ def evaluate(clf: Any, prompts_val: List[str], labels_val: List[int],
         print("=" * 50)
         print(f"Prompt: {prompt}")
         
-        # 分類器の予測を取得
-        clf_prediction, outputs = get_classifier_prediction(prompt, clf)
+        # 分類器の予測を取得（models を渡す）
+        clf_prediction, outputs = get_classifier_prediction_and_llm_outputs(prompt, clf, models=models)
 
         y_pred_clf.append(clf_prediction)
         y_true_clf.append(label)
@@ -185,12 +186,13 @@ def evaluate(clf: Any, prompts_val: List[str], labels_val: List[int],
     
     return results
 
-def main(num_eval: int = 20) -> None:
+def main(num_eval: int = 20, models: Optional[List[str]] = None) -> None:
     """
     メイン処理
     
     Args:
         num_eval: 評価サンプル数
+        models: LLM出力取得に使用するモデル名リスト（Noneならデフォルト）
     """
     print(f"\n{'='*70}")
     print("Adversarial Prompt Detection - Evaluation Script")
@@ -212,7 +214,7 @@ def main(num_eval: int = 20) -> None:
     print(f"Dataset loaded: {len(prompts_val)} samples\n")
     
     # 評価
-    results = evaluate(clf, prompts_val, labels_val, num_eval)
+    results = evaluate(clf, prompts_val, labels_val, num_eval, models)
     
     # 結果表示
     print(f"\n{'='*70}")
@@ -242,7 +244,14 @@ if __name__ == "__main__":
         default=20,
         help="Number of evaluation samples (default: 20)"
     )
+    parser.add_argument(
+        "--models",
+        type=str,
+        default=None,
+        help="Comma-separated list of models to use for LLM outputs (e.g. 'gpt-4,llama3'). If omitted, defaults in utils are used."
+    )
     
     args = parser.parse_args()
+    models_list = args.models.split(",") if args.models else None
     
-    main(num_eval=args.num_eval)
+    main(num_eval=args.num_eval, models=models_list)
