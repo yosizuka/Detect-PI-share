@@ -83,42 +83,40 @@ def get_local_llm_output(prompt: str, model: str) -> str:
     return response['message']['content']
 
 
-def get_llm_outputs_embeddings(prompt: str) -> Tuple[np.ndarray, List[str]]:
+def get_llm_outputs_embeddings(prompt: str, models: Optional[List[str]] = None) -> Tuple[np.ndarray, List[str]]:
     """
     プロンプトを複数のLLMに入力し、その出力の埋め込みを取得
     
     Args:
         prompt: 評価するプロンプト
+        models: 使用するモデル名のリスト。None の場合はデフォルトで
+                ["gpt-4", "deepseek-r1:7b", "llama3"] を使用する。
+                "gpt-*" や "openai" で始まる識別子は OpenAI API（get_llm_output）を呼び、
+                それ以外はローカル ollama モデル（get_local_llm_output）として扱います。
     
     Returns:
         (結合された埋め込み, LLM出力のリスト)のタプル
     """
+    if models is None:
+        models_list = ["gpt-4", "deepseek-r1:7b", "llama3"]
+    else:
+        models_list = models
+
     outputs = []
-    
-    # GPT-4からの出力
-    try:
-        gpt_output = get_llm_output(prompt)
-        outputs.append(gpt_output)
-    except Exception as e:
-        print(f"[WARN] GPT-4 error: {e}")
-        outputs.append("")
-    
-    # DeepSeekからの出力
-    try:
-        deepseek_output = get_local_llm_output(prompt, 'deepseek-r1:7b')
-        outputs.append(deepseek_output)
-    except Exception as e:
-        print(f"[WARN] DeepSeek error: {e}")
-        outputs.append("")
-    
-    # Llama3からの出力
-    try:
-        llama_output = get_local_llm_output(prompt, 'llama3')
-        outputs.append(llama_output)
-    except Exception as e:
-        print(f"[WARN] Llama3 error: {e}")
-        outputs.append("")
-    
+
+    for model in models_list:
+        try:
+            # OpenAI系モデルは get_llm_output を使う
+            if model.lower().startswith("gpt") or model.lower().startswith("openai"):
+                out = get_llm_output(prompt)
+            else:
+                # それ以外はローカル ollama モデルとして扱う
+                out = get_local_llm_output(prompt, model)
+            outputs.append(out)
+        except Exception as e:
+            print(f"[WARN] {model} error: {e}")
+            outputs.append("")
+
     # 各出力の埋め込みを取得して結合
     output_embeddings = []
     for output in outputs:
@@ -129,10 +127,10 @@ def get_llm_outputs_embeddings(prompt: str) -> Tuple[np.ndarray, List[str]]:
             # 空の場合はゼロベクトル
             emb = np.zeros(EMBEDDING_DIM)
             output_embeddings.append(emb)
-    
+
     # すべての埋め込みを結合
     combined_embedding = np.concatenate(output_embeddings)
-    
+
     return combined_embedding, outputs
 
 
@@ -213,13 +211,14 @@ def load_model(filepath: Path) -> Optional[Any]:
         return None
 
 
-def get_classifier_prediction(prompt: str, clf: Any) -> Tuple[int, List[str]]:
+def get_classifier_prediction_and_llm_outputs(prompt: str, clf: Any, models: Optional[List[str]] = None) -> Tuple[int, List[str]]:
     """
-    プロンプトとLLM出力を含めた分類器の予測を取得
+    プロンプトとLLM出力を含めた分類器の予測を取得（使用するモデルを指定可能）
     
     Args:
         prompt: 評価するプロンプト
         clf: 学習済み分類器
+        models: 使用するモデル名のリスト（Noneならデフォルトのモデルリストを使用）
     
     Returns:
         (予測クラス(0 or 1), LLM出力のリスト)のタプル
@@ -227,8 +226,8 @@ def get_classifier_prediction(prompt: str, clf: Any) -> Tuple[int, List[str]]:
     # プロンプトの埋め込み
     prompt_embedding = get_embedding(prompt)
     
-    # LLM出力の埋め込み
-    output_embedding, outputs = get_llm_outputs_embeddings(prompt)
+    # LLM出力の埋め込み（models を渡す）
+    output_embedding, outputs = get_llm_outputs_embeddings(prompt, models=models)
     
     # 結合
     combined_embedding = np.concatenate([prompt_embedding, output_embedding]).reshape(1, -1)
